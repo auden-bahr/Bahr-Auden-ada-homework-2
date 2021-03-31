@@ -1,0 +1,333 @@
+---
+title: "Bahr_HW2"
+author: "Audrey Bahr"
+date: "3/30/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(plyr)
+library(tidyverse)
+library(cowplot)
+library(mosaic)
+library(radiant)
+```
+
+*Challenge 1*
+```{r}
+d <- read_csv("https://raw.githubusercontent.com/difiore/ada-2021-datasets/master/IMDB-movies.csv")
+d
+```
+
+Use a one-line statement to filter the dataset to include just movies from 1920 to 1979 and movies that are between 1 and 3 hours long (runtimeMinutes >= 60 and runtimeMinutes <= 180), and add a new column that codes the startYear into a new variable, decade (“20s,” “30s,” …“70s”). If you do this correctly, there should be 5651 movies remaining in the dataset.
+
+```{r}
+new_d <- d %>% filter(startYear >= 1920 & startYear <= 1979) %>% filter(runtimeMinutes >= 60 & runtimeMinutes <= 180) %>% mutate(decade = startYear %% 100 %>% round_any(10, floor) %>% as.character() %>% paste("s", sep=""))
+
+nrow(new_d)
+```
+
+
+Use {ggplot2} to plot histograms of the distribution of runtimeMinutes for each decade.
+HINT: Try using facet_wrap() to do this!
+
+```{r}
+ggplot(new_d, aes(runtimeMinutes)) +
+  geom_histogram(bins = 15) + 
+  facet_wrap(vars(decade)) +
+  theme_minimal_grid() + 
+  ggtitle("Distribution of Movie Run Times Over the Decades") +
+  ylab("Count") +
+  xlab("Run Times (Minutes)")
+```
+
+
+Use a one-line statement to calculate the population mean and population standard deviation in runtimeMinutes for each decade and save the results in a new dataframe, results.
+HINT: Use {dplyr} functions and the pipe operator!
+```{r}
+results <- new_d %>% group_by(decade) %>% summarise(pop_mean = mean(runtimeMinutes), pop_stdev = sd(runtimeMinutes))
+results
+```
+
+
+Draw a single sample of 100 movies, without replacement, from each decade, calculate this single sample mean and sample standard deviation in runtimeMinutes, and estimate the SE around the population mean runtimeMinutes for each decade based on the standard deviation and sample size from these samples.
+
+```{r}
+set.seed(123)
+s <- new_d %>% group_by(decade) %>% slice_sample(n = 100, replace = FALSE) %>% dplyr::summarise(s_mean = mean(runtimeMinutes), s_stdev = sd(runtimeMinutes), se = s_stdev/sqrt(100))
+```
+
+Compare these estimates to the actual population mean runtimeMinutes for each decade and to the calculated SE in the population mean for samples of size 100 based on the population standard deviation for each decade.
+
+```{r}
+abs(results$pop_mean - s$s_mean)
+abs(results$pop_stdev / sqrt(100) - s$se)
+```
+**The mean of the population and the sample run times are similar, differing by less than three minutes across the decades. The difference in the calculated SE is also very small, with a maximum of 0.18.** 
+
+Generate a sampling distribution of mean runtimeMinutes for each decade by [a] drawing 1000 samples of 100 movies from each decade and, for each sample, [b] calculating the mean runtimeMinutes and the standard deviation in runtimeMinutes.
+
+```{r}
+s_dist <- data.frame()
+for (i in 1:1000) {
+  
+  temp <- new_d %>% group_by(decade) %>% slice_sample(n = 100, replace = FALSE) %>% dplyr::summarise(s_mean = mean(runtimeMinutes), s_stdev = sd(runtimeMinutes), .groups="drop_last")
+  
+  s_dist <- rbind(s_dist, temp)
+}
+```
+
+Then, calculate the MEAN and the STANDARD DEVIATION of the sampling distribution of sample means for each decade (the former should be a very good estimate of the population mean, while the latter is another estimate of the standard error in the population mean for a particular sample size) and plot a histogram of the sampling distribution. What shape does it have?
+
+```{r}
+s_stats <- s_dist %>% group_by(decade) %>% dplyr::summarise(dist_m = mean(s_mean), dist_sd = sd(s_mean))
+
+s_stats
+```
+
+
+```{r}
+ggplot(s_dist, aes(s_mean)) +
+  geom_histogram(bins = 25) + 
+  facet_wrap(vars(decade)) +
+  theme_minimal_grid() + 
+  ggtitle("Movie Run Times Over the Decades", subtitle = "Distribution of Sample Means (n=100)") +
+  ylab("Count") +
+  xlab("Run Times (Minutes)")
+```
+
+**The shape of the distribution of sample means is symmetrical and approximately normal.**
+
+Finally, compare the standard error in runtimeMinutes for samples of size 100 from each decade [1] as estimated from your first sample of 100 movies, [2] as calculated from the known population standard deviations for each decade, and [3] as estimated from the sampling distribution of sample means.
+
+```{r}
+# 1
+s$se
+# 2
+results$pop_stdev / sqrt(100)
+# 3
+s_stats$dist_sd
+```
+
+**The standard error of the mean [3] for 1000 repeated trials is less than the other two standard errors. The known population standard error [2] appears to be the greatest overall, but the higher value for se varies between the known population and the single sample when looking at individual decades.**
+
+*Challenge 2*
+
+Every morning at the same time, a bee bioloigist goes and sits in a field in the morning and watches for forager bees returning to a hive, counting the number that arrive in a one hour window from 7am to 8am. Based on previous knowledge, she believes that the mean number of foragers that will return in that time is 12, roughly one every 6 minutes. Let  
+X represent the appropriate Poisson random variable of the number of arriving bees each monitoring session.
+
+What is the probability that she will see 9 or fewer bees arrive during any given session?
+```{r}
+mean = 12
+x = 9
+
+ppois(x, mean)
+```
+
+What is the probability that she will see no bees arrive in a session?
+```{r}
+x = 0
+
+ppois(x, mean)
+```
+
+What is the probability that she will see exactly 5 bees arrive in a session?
+```{r}
+x = 5
+dpois(5, mean)
+```
+
+
+What is the probability that she will see more than 18 bees arrive in a session?
+```{r}
+x = 18
+
+1 - ppois(x, mean)
+```
+
+
+Plot the relevant Poisson mass function over the values in range 0 ≤  x ≤ 24.
+
+```{r}
+vals <- c(0:24)
+prob <- dpois(vals, mean)
+
+ggplot(data.frame(vals, prob), aes(vals, prob)) + 
+  geom_col() + 
+  ylab("Pr(X = x)") + 
+  xlab("x") +
+  ggtitle("Probability Mass Function for Poisson Distribution", subtitle = "Lambda = 12") +
+  theme_minimal_grid()
+```
+
+Using the rpois() function, simulate 1460 results from this distribution (i.e., 4 full years of morning monitoring sessions).
+Plot the simulated results using the histogram() function from the {mosaic} package and use xlim() to set the horizontal limits to be from 0 to 24. How do your simulated results compare to the shape of the probability mass function you plotted above?
+```{r}
+set.seed(4323)
+Values <- rpois(1460, mean)
+
+histogram(Values, xlim = c(0:24), nint = 20)
+```
+
+**This simulated plot is less symmetrical and has a tall peak in the 8-9 range. The plot above, which used dpois, is more symmetrical and the highest probabilities are for x = 11 and x = 12, which is closer to the true mean of 12.**
+
+*Challenge 3*
+
+Load in the dataset “zombies.csv” from the ada-2021-datasets repository on GitHub as a “tibble,” d. The URL for the data file is “https://raw.githubusercontent.com/difiore/ada-2021-datasets/master/zombies.csv.” This data includes the first and last name and gender of the entire population of 1000 people who have survived the zombie apocalypse and are now ekeing out an existence somewhere on the East Coast, along with several other variables (height, weight, age, number of years of education, number of zombies they have killed, and college major). See here for info on important post-zombie apocalypse majors!
+
+```{r}
+d <- read_csv("https://raw.githubusercontent.com/difiore/ada-2021-datasets/master/zombies.csv")
+```
+
+
+Calculate the population mean and standard deviation for each quantitative random variable (height, weight, age, number of zombies killed, and years of education).
+NOTE: You will not want to use the built in var() and sd() commands as those are for samples.
+
+```{r}
+zombie_stats <- d %>% select(height, weight, zombies_killed, years_of_education, age) %>% summarise(m_height = mean(height), sd_height = sdpop(height), m_weight = mean(weight), sd_weight = sdpop(weight), m_zk = mean(zombies_killed), sd_zk = sdpop(zombies_killed), m_edu = mean(years_of_education), sd_edu = sdpop(years_of_education), m_age = mean(age), sd_age = sdpop(age))
+
+zombie_stats
+```
+
+Use {ggplot} and make boxplots of each of these variables by gender.
+
+```{r}
+a <- ggplot(d, aes(y = height, x = gender, color = gender)) + 
+  geom_boxplot() + 
+  theme_minimal_grid() +
+  ggtitle("Height") +
+  ylab("Height") +
+  xlab(NULL)
+
+b <- ggplot(d, aes(y = weight, x = gender, color = gender)) + 
+  geom_boxplot() + 
+  theme_minimal_grid() +
+  ggtitle("Weight") +
+  ylab("Weight") +
+  xlab(NULL)
+
+c <- ggplot(d, aes(y = zombies_killed, x = gender, color = gender)) + 
+  geom_boxplot() + 
+  theme_minimal_grid() +
+  ggtitle("Number of Zombies Killed") +
+  ylab("Number of Zombies Killed") +
+  xlab(NULL)
+
+f <- ggplot(d, aes(y = age, x = gender, color = gender)) + 
+  geom_boxplot() + 
+  theme_minimal_grid() +
+  ggtitle("Age") +
+  ylab("Age") +
+  xlab(NULL)
+
+g <- ggplot(d, aes(y = years_of_education, x = gender, color = gender)) + 
+  geom_boxplot() + 
+  theme_minimal_grid() +
+  ggtitle("Years of Education") +
+  ylab("Years of Education") +
+  xlab(NULL)
+
+plot_grid(a, b, c, f, g, ncol = 2)
+```
+
+
+Use {ggplot2} and make scatterplots of height and weight in relation to age, using different colored points for males versus females. Do these variables seem to be related? In what way?
+
+```{r}
+ggplot(d, aes(height, weight, color = gender)) + geom_point()
+
+ggplot(d, aes(age, height, color = gender)) + geom_point()
+
+ggplot(d, aes(age, weight, color = gender)) + geom_point()
+```
+
+**Height and age as well as height and weight appear positively correlated together, but there is a much weaker relationship between weight and age. Males tend to have greater heights and weights than females, but there does not appear to be a difference in the distribution of ages between males and females.**
+
+Using histograms and Q-Q plots, check whether the quantitative variables seem to be drawn from a normal distribution. Which seem to be and which do not?
+
+```{r}
+hist(d$weight)
+qqnorm(d$weight, main = "Weight")
+qqline(d$weight, col = "gray")
+hist(d$height)
+qqnorm(d$height, main = "Height")
+qqline(d$height, col = "gray")
+hist(d$age)
+qqnorm(d$age, main = "Age")
+qqline(d$age, col = "gray")
+hist(d$zombies_killed)
+qqnorm(d$zombies_killed, main = "Zombies Killed")
+qqline(d$zombies_killed, col = "gray")
+hist(d$years_of_education)
+qqnorm(d$years_of_education, main = "Years of Education")
+qqline(d$years_of_education, col = "gray")
+```
+
+
+HINT: Not all are drawn from a normal distribution! For those that are not, can you determine what common distribution they are drawn from?
+
+**The number of zombies killed and years of education do not appear to be drawn from a normal distribution. If I had to guess, I would say they were Poisson-distributed. The rest do appear to be normally distributed.**
+
+Now use the sample_n() function from {dplyr} to sample ONE subset of 50 zombie apocalypse survivors (without replacement) from this population and calculate the mean and sample standard deviation for each variable. Also estimate the standard error for each variable based on this sample and use that to construct a 95% confidence interval for each mean. You can use either the standard normal or a Student’s t distribution to derive the critical values needed to calculate the lower and upper limits of the CI.
+
+```{r}
+sample0 <- sample_n(d, 50, replace = FALSE) %>% select(height, weight, zombies_killed, years_of_education, age) %>% summarise(m_height = mean(height), sd_height = sd(height), se_height = sd_height/sqrt(50), m_weight = mean(weight), sd_weight = sd(weight), se_weight = sd_weight/sqrt(50), m_zk = mean(zombies_killed), sd_zk = sd(zombies_killed), se_zk = sd_zk/sqrt(50), m_edu = mean(years_of_education), sd_edu = sd(years_of_education), se_edu = sd_edu/sqrt(50), m_age = mean(age), sd_age = sd(age), se_age = sd_age/sqrt(50)) 
+
+idx <- seq(1, 15, 3)
+for (i in 1:5) {
+  ci<- sample0[[idx[i]]] + c(-1, 1) * qnorm(1 - .05 / 2) * sample0[[idx[i]+2]]
+  print(paste("95% CI for ", colnames(sample0)[idx[i]], ": ", sep=""))
+  print(ci) 
+}
+
+```
+
+
+Then draw another 99 random samples of 50 zombie apocalypse survivors out and calculate the mean for each of the these samples. Together with the first sample you drew out, you now have a set of 100 means for each variable (each based on 50 observations), which constitutes a sampling distribution for each variable. What are the means and standard deviations of the sampling distribution for each variable?
+
+```{r}
+sample <- dplyr::select(sample0, m_height, m_weight, m_zk, m_edu, m_age)
+for (i in 1:99) {
+  
+  temp <- d %>% sample_n(50, replace = FALSE) %>% dplyr::select(height, weight, zombies_killed, years_of_education, age) %>% summarise(m_height = mean(height), m_weight = mean(weight), m_zk = mean(zombies_killed), m_edu = mean(years_of_education), m_age = mean(age))
+  
+  sample <- rbind(sample, temp)
+}
+
+dist_stats <- sample %>% summarise(sm_height = mean(m_height), ssd_height = sd(m_height), sm_weight = mean(m_weight), ssd_weight = sd(m_weight), sm_zk = mean(m_zk), ssd_zk = sd(m_zk), sm_edu = mean(m_edu), ssd_edu = sd(m_edu), sm_age = mean(m_age), ssd_age = sd(m_age))
+
+dist_stats
+```
+
+
+NOTE: Remember that the standard deviation of the sampling distribution is the standard error! You could use this value to derive another estimate for the 95% CI the shape of the sampling distribution should be normal.
+
+Finally, construct an 95% confidence interval for each mean directly from the sampling distribution of sample means using the central 95% that distribution (i.e., by setting the lower and upper CI bounds to 2.5% and 97.5% of the way through that distribution).
+
+```{r}
+for (i in seq(1, 10, 2)) {
+
+ci<- dist_stats[[1,i]] + c(-1, 1) * qnorm(1 - .05 / 2) * dist_stats[[1, i+1]]
+print(paste("95% CI for ", colnames(dist_stats)[i], ": ", sep=""))
+print(ci)
+}
+```
+
+
+How do the standard deviations of the sampling distribution for each variable compare to the standard errors estimated from your first sample of size 50? What do sampling distributions for each variable mean look like? Are they normally distributed? What about for those variables that you concluded were not originally drawn from a normal distribution? How do the two 95% CIs you estimated compare to one another (i.e., the CI based on one sample and its estimated standard deviation versus the CI based on simulation)?
+
+```{r}
+hist(sample$m_height, breaks = 10)
+hist(sample$m_weight, breaks = 10)
+hist(sample$m_zk, breaks = 10)
+hist(sample$m_edu, breaks = 10)
+hist(sample$m_age, breaks = 10)
+```
+
+**The standard error from the first sample appears to be higher than in the sampling distribution. The distribution of means of the sampling distribution only appears normal for mean heights. The rest of the variables appear slightly skewed and unsymmetrical. The 95% CIs for years of education and weight differ slightly in their endpoints between the first sample of size 50 and the sampling distribution. The other variables have approximately the same endpoints and size of the CI.**
+
+
